@@ -1,52 +1,48 @@
-var ss = SpreadsheetApp.openById('1GRIrh31Eaz3as51APkkhUpsAANUQuZ4dJmH8ORdio2k');
-var sheetAbsensi = ss.getSheetByName('Sheet1');
-var sheetData = ss.getSheetByName('DataSiswa'); 
-var timezone = "Asia/Balikpapan"; //
+var ss = SpreadsheetApp.openById("1Uwh7bJgDzMKVo4CwV2v1hAXRSLQI2l6_QQLMMDmW5_c");
+var sheet = ss.getSheetByName('Sheet1');
+var timezone = "Asia/Makassar"; // WITA - Balikpapan
 
 function doGet(e) {
-  // Cek keberadaan objek e
-  if (!e || !e.parameter) return ContentService.createTextOutput("Error: No parameters");
+  if (!e || !e.parameter || !e.parameter.name) {
+    return ContentService.createTextOutput("ERROR: Parameter 'name' tidak ditemukan.");
+  }
 
-  // Ambil ID kartu
-  var rawID = e.parameter.id || e.parameter.ID; // Support id atau ID
-  if (!rawID) return ContentService.createTextOutput("Error: ID is missing");
+  // Format nama
+  var name = e.parameter.name.trim();
+  name = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 
-  var searchID = rawID.toString().trim();
+  // ID opsional
+  var id = e.parameter.id ? e.parameter.id.trim() : "";
 
-  // Pastikan sheetData ditemukan
-  if (!sheetData) return ContentService.createTextOutput("Error: Sheet 'DataSiswa' tidak ditemukan!");
+  var now = new Date();
+  var date = Utilities.formatDate(now, timezone, "dd/MM/yyyy"); // Kolom A
+  var time = Utilities.formatDate(now, timezone, "HH:mm:ss");  // Kolom B
 
-  var data = sheetData.getDataRange().getValues();
-  var nama = "", kelas = "", ditemukan = false;
+  var lastRow = sheet.getLastRow();
+  var lastStatus = "";
 
-  for (var i = 1; i < data.length; i++) {
-    // Cek jika baris dan kolom ID tidak kosong
-    if (data[i] && data[i][0] !== undefined && data[i][0] !== null) {
-      if (data[i][0].toString().trim() === searchID) {
-        nama = data[i][1] || "Tanpa Nama";
-        kelas = data[i][2] || "-";
-        ditemukan = true;
-        break;
-      }
+  // Cari status terakhir berdasarkan nama & tanggal hari ini
+  for (var i = lastRow; i >= 5; i--) {
+    var rowTanggal = sheet.getRange(i, 1).getDisplayValue(); // A = Tanggal
+    var rowNama    = sheet.getRange(i, 3).getDisplayValue(); // C = Nama
+
+    if (rowNama === name && rowTanggal === date) {
+      lastStatus = sheet.getRange(i, 5).getDisplayValue();   // E = Status
+      break;
     }
   }
 
-  if (!ditemukan) return ContentService.createTextOutput("ID [" + searchID + "] belum terdaftar");
+  // Toggle IN / OUT
+  var status = (lastStatus === "IN") ? "OUT" : "IN";
 
-  // Input ke Sheet1
-  var Curr_Date = new Date();
-  var Formatted_Date = Utilities.formatDate(Curr_Date, timezone, 'dd-MM-yyyy');
-  var Formatted_Time = Utilities.formatDate(Curr_Date, timezone, 'HH:mm:ss');
-  
-  var lastRow = sheetAbsensi.getRange("B:B").getValues().filter(String).length;
-  var nextRow = Math.max(lastRow + 1, 6); 
-  
-  sheetAbsensi.getRange(nextRow, 1).setValue(nextRow - 5);
-  sheetAbsensi.getRange(nextRow, 2).setValue(Formatted_Date);
-  sheetAbsensi.getRange(nextRow, 3).setValue(Formatted_Time);
-  sheetAbsensi.getRange(nextRow, 4).setValue(nama);
-  sheetAbsensi.getRange(nextRow, 5).setValue(kelas);
-  sheetAbsensi.getRange(nextRow, 6).setValue("Hadir");
+  // Tulis ke spreadsheet sesuai urutan kolom
+  sheet.appendRow([
+    date,   // A - Tanggal
+    time,   // B - Waktu
+    name,   // C - Nama
+    id,     // D - ID
+    status  // E - Status
+  ]);
 
-  return ContentService.createTextOutput("Berhasil: " + nama);
+  return ContentService.createTextOutput(name + " - " + status + " Berhasil Dicatat");
 }
