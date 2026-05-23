@@ -1,104 +1,270 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <LiquidCrystal_I2C.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecureBearSSL.h>
 
-// Definisi Pin
+// ===================== Definisi Pin =====================
 #define SS_PIN    D4
 #define RST_PIN   D3
 #define TRIG_PIN  D0
-#define ECHO_PIN  3   // Pin RX (GPIO 3)
-#define BUZZ_PIN  D8  // Buzzer Pasif
+#define ECHO_PIN  3
+#define BUZZ_PIN  D8
 
+// ===================== Konfigurasi WiFi =====================
+#define WIFI_SSID     "SSID WIFIMU"
+#define WIFI_PASSWORD "PASS WIFIMU"
+
+// ===================== URL Google Sheets =====================
+String sheet_url = "https://script.google.com/macros/s/AKfycbxEM4eBS8H7MFzBTjxN2KICNB9qltNQzvQMWYjs_20R3sH0ztFR4wfoBy9seIjLEvBQ/exec";
+
+// ===================== Objek =====================
 MFRC522 rfid(SS_PIN, RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-unsigned long lastDetectionTime = 0; 
-const unsigned long displayTimeout = 5000; 
+unsigned long lastDetectionTime = 0;
+const unsigned long displayTimeout = 5000;
 bool isDisplayActive = false;
 
+// ===================== Mapping UID → Nama =====================
+String getNameByUID(String uid) {
+  if (uid == "C533D605") return "Nizar";
+  if (uid == "23025611") return "Ghitrif";
+  if (uid == "97449604") return "Siswa";
+  return "";
+}
+
+// ===================== URL Encode =====================
+String urlEncode(String str) {
+  String encoded = "";
+  for (int i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (c == ' ')      encoded += "%20";
+    else if (c == '&') encoded += "%26";
+    else if (c == '=') encoded += "%3D";
+    else if (c == '+') encoded += "%2B";
+    else               encoded += c;
+  }
+  return encoded;
+}
+
+// ===================== Fungsi Kirim ke Google Sheets =====================
+String sendToSheet(String name, String uid) {
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.reconnect();
+    delay(3000);
+    if (WiFi.status() != WL_CONNECTED) return "WiFi Gagal!";
+  }
+
+  std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
+  client->setInsecure();
+
+  HTTPClient https;
+
+  String fullUrl = sheet_url + "?name=" + urlEncode(name) + "&id=" + uid;
+  Serial.println("Kirim ke: " + fullUrl);
+
+  String response = "Kirim Gagal!";
+
+  if (https.begin(*client, fullUrl)) {
+    https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    https.addHeader("Accept", "text/plain");
+    https.addHeader("User-Agent", "ESP8266HTTPClient");
+
+    int httpCode = https.GET();
+    Serial.println("HTTP Code: " + String(httpCode));
+
+    if (httpCode == HTTP_CODE_OK) {
+      String raw = https.getString();
+      raw.trim();
+      Serial.println("Raw response: " + raw);
+
+      if (raw.startsWith("<!") || raw.startsWith("<html") || raw.startsWith("<HTML")) {
+        response = "Akses Ditolak!";
+        Serial.println("ERROR: Google mengembalikan HTML - script butuh login");
+      } else {
+        response = raw;
+      }
+
+    } else {
+      response = "HTTP: " + String(httpCode);
+      Serial.println("ERROR HTTP Code: " + String(httpCode));
+    }
+
+    https.end();
+  } else {
+    Serial.println("ERROR: Gagal membuka koneksi HTTPS");
+  }
+
+  return response;
+}
+
+// ===================== Fungsi Buzzer Error =====================
+void buzzerError() {
+  tone(BUZZ_PIN, 500);
+  delay(300);
+  noTone(BUZZ_PIN);
+  delay(100);
+  tone(BUZZ_PIN, 500);
+  delay(300);
+  noTone(BUZZ_PIN);
+}
+
+// ===================== Fungsi Buzzer Sukses =====================
+void buzzerSukses() {
+  tone(BUZZ_PIN, 2000);
+  delay(150);
+  noTone(BUZZ_PIN);
+}
+
+// ===================== Setup =====================
 void setup() {
+  Serial.begin(9600);
+
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(BUZZ_PIN, OUTPUT);
 
   SPI.begin();
   rfid.PCD_Init();
-  
+
   lcd.init();
+  lcd.backlight();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Menghubungkan");
+  lcd.setCursor(0, 1);
+  lcd.print("ke WiFi...");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int attempt = 0;
+  while (WiFi.status() != WL_CONNECTED && attempt < 20) {
+    delay(500);
+    attempt++;
+  }
+
+  lcd.clear();
+  if (WiFi.status() == WL_CONNECTED) {
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Terhubung!");
+    lcd.setCursor(0, 1);
+    lcd.print(WiFi.localIP().toString());
+    Serial.println("WiFi OK: " + WiFi.localIP().toString());
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Gagal!");
+    lcd.setCursor(0, 1);
+    lcd.print("Cek Koneksi...");
+    Serial.println("WiFi GAGAL");
+  }
+
+  delay(2000);
   lcd.noBacklight();
+  lcd.clear();
 }
 
+// ===================== Loop =====================
 void loop() {
-  // 1. Logika deteksi jarak dengan Ultrasonik + TIMEOUT agar tidak hang
+
+  // 1. Deteksi ultrasonik
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
-  
-  // Timeout 20ms cukup untuk deteksi jarak ~3 meter, mencegah program berhenti lama
-  long duration = pulseIn(ECHO_PIN, HIGH, 20000); 
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 20000);
   int distance = (duration == 0) ? 999 : duration * 0.034 / 2;
 
-  // 2. Logika Display On/Off
+  // 2. Nyalakan LCD jika ada objek < 20cm
   if (distance > 0 && distance < 20) {
-    lastDetectionTime = millis(); 
-    
+    lastDetectionTime = millis();
+
     if (!isDisplayActive) {
       lcd.backlight();
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("Selamat Datang ");
+      lcd.print("PENGMAS IEEE");
       lcd.setCursor(0, 1);
       lcd.print("Silahkan Tap...");
       isDisplayActive = true;
     }
 
-    // 3. Cek RFID dengan non-blocking check
-    if (rfid.PICC_IsNewCardPresent()) { // Cek apakah ada kartu
-      if (rfid.PICC_ReadCardSerial()) { // Baca kartu tersebut
-        
-        // Bunyi Buzzer Pasif
-        tone(BUZZ_PIN, 2000); 
-        delay(150);
-        noTone(BUZZ_PIN);
+    // 3. Baca RFID
+    if (rfid.PICC_IsNewCardPresent()) {
+      if (rfid.PICC_ReadCardSerial()) {
 
+        buzzerSukses();
+
+        // Baca UID
         String uidString = "";
         for (byte i = 0; i < rfid.uid.size; i++) {
-          uidString += String(rfid.uid.uidByte[i] < 0x10 ? "0" : "");
+          if (rfid.uid.uidByte[i] < 0x10) uidString += "0";
           uidString += String(rfid.uid.uidByte[i], HEX);
-          uidString.toUpperCase();
+        }
+        uidString.toUpperCase();
+        Serial.println("UID terbaca: " + uidString);
+
+        String name = getNameByUID(uidString);
+
+        if (name == "") {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Kartu Unknown!");
+          lcd.setCursor(0, 1);
+          lcd.print(uidString);
+          Serial.println("UID tidak terdaftar: " + uidString);
+          buzzerError();
+          delay(2000);
+
+        } else {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Nama: " + name);
+          lcd.setCursor(0, 1);
+          lcd.print("Mengirim...");
+
+          String result = sendToSheet(name, uidString);
+          Serial.println("Respons: " + result);
+
+
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(name.substring(0, 16));
+          lcd.setCursor(0, 1);
+
+          if (result == "Akses Ditolak!" || result == "Kirim Gagal!" || result.startsWith("HTTP:")) {
+            lcd.print("Gagal Terkirim!");
+            buzzerError();
+          } else {
+            lcd.print("Telah Tercatat!");
+          }
+
+          delay(3000);
         }
 
+        // Kembali ke tampilan utama
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print("ID: " + uidString);
-        lcd.setCursor(0, 1);
-        lcd.print("Berhasil Absen!");
-        
-        delay(2000); 
-        
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("Selamat Datang ");
+        lcd.print("PENGMAS IEEE");
         lcd.setCursor(0, 1);
         lcd.print("Silahkan Tap...");
-        
-        // Reset state RFID agar siap baca lagi
+
         rfid.PICC_HaltA();
         rfid.PCD_StopCrypto1();
-        lastDetectionTime = millis(); 
+        lastDetectionTime = millis();
       }
     }
-  } 
-  
-  // 4. Logika Mematikan LCD
+  }
+
+  // 4. Matikan LCD jika timeout
   if (isDisplayActive && (millis() - lastDetectionTime > displayTimeout)) {
     lcd.noBacklight();
     lcd.clear();
     isDisplayActive = false;
   }
 
-  // Delay kecil agar loop tidak terlalu kencang namun tetap responsif
-  yield(); 
+  yield();
 }
