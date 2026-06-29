@@ -16,7 +16,7 @@
 
 // ===================== URL API Vercel Dashboard =====================
 // Ganti domain di bawah ini dengan URL hasil deploy Vercel-mu nanti
-String vercel_api_url = "https://nama-proyek-kamu.vercel.app/api/attendance";
+String vercel_api_url = "https://attendance-airlangga.vercel.app/api/attendance";
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
