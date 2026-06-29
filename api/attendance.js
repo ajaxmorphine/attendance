@@ -54,7 +54,7 @@ module.exports = async (req, res) => {
 
     // --- 3. MENERUSKAN DATA KE GOOGLE SHEETS ---
     const forwardUrl = `${GOOGLE_SHEET_URL}?name=${encodeURIComponent(namaSiswa)}&id=${uid}&status=${statusAbsen}`;
-    console.log("[DEBUG] Forwarding to:", forwardUrl);
+    console.log("[DEBUG] forwardUrl:", forwardUrl);
     // Gunakan try-catch lokal atau biarkan fetch berjalan tanpa mempedulikan return bodynya
   try {
     const sheetRes = await fetch(forwardUrl, { 
