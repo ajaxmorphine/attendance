@@ -54,9 +54,17 @@ module.exports = async (req, res) => {
 
     // --- 3. MENERUSKAN DATA KE GOOGLE SHEETS ---
     const forwardUrl = `${GOOGLE_SHEET_URL}?name=${encodeURIComponent(namaSiswa)}&id=${uid}&status=${statusAbsen}`;
-    await fetch(forwardUrl, { method: 'GET' });
     
-    // --- 4. RESPONS BALIK KE ESP8266 (PASTIKAN PAKE .json) ---
+    // Gunakan try-catch lokal atau biarkan fetch berjalan tanpa mempedulikan return bodynya
+    try {
+      await fetch(forwardUrl, { method: 'GET' });
+    } catch (err) {
+      console.error("[WARNING] Gagal meneruskan ke Google Sheets:", err.message);
+      // Tetap lanjutkan agar ESP8266 menerima respon JSON walaupun Sheets lambat/error
+    }
+    
+    // --- 4. RESPONS BALIK KE ESP8266 ---
+    // Pastikan ini dieksekusi secara bersih dan independen
     return res.status(200).json({
       status: statusAbsen,
       name: namaSiswa
