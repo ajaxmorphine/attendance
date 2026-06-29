@@ -56,12 +56,16 @@ module.exports = async (req, res) => {
     const forwardUrl = `${GOOGLE_SHEET_URL}?name=${encodeURIComponent(namaSiswa)}&id=${uid}&status=${statusAbsen}`;
     
     // Gunakan try-catch lokal atau biarkan fetch berjalan tanpa mempedulikan return bodynya
-    try {
-      await fetch(forwardUrl, { method: 'GET' });
-    } catch (err) {
-      console.error("[WARNING] Gagal meneruskan ke Google Sheets:", err.message);
-      // Tetap lanjutkan agar ESP8266 menerima respon JSON walaupun Sheets lambat/error
-    }
+  try {
+    const sheetRes = await fetch(forwardUrl, { 
+      method: 'GET',
+      redirect: 'follow'
+    });
+    const sheetText = await sheetRes.text();
+    console.log("[SHEETS]", sheetRes.status, sheetText);
+  } catch (err) {
+    console.error("[WARNING] Gagal meneruskan ke Google Sheets:", err.message);
+  } 
     
     // --- 4. RESPONS BALIK KE ESP8266 ---
     // Pastikan ini dieksekusi secara bersih dan independen
