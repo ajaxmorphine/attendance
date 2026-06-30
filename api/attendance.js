@@ -34,21 +34,35 @@ module.exports = async (req, res) => {
 
     // 2. LOGIKA PENENTUAN WAKTU (Zona Waktu WITA)
     const options = { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit', hour12: false };
-    const timeString = new Date().toLocaleTimeString('id-ID', options); // Menghasilkan format "HH.mm" atau "HH:mm"
+    const timeString = new Date().toLocaleTimeString('id-ID', options); 
     
     // Parsing nilai jam secara aman
     const currentHour = parseInt(timeString.split(/[.:]/)[0], 10);
 
-    let statusAbsen = "TERLAMBAT";
+    let statusAbsen = "MASUK"; // Default diset MASUK agar Apps Script mengenali sebagai sesi masuk
 
-    // Aturan Waktu Operasional Presensi:
-    // Absen Masuk  : Jam 06:00 s/d 08:59 WITA
-    // Absen Keluar : Jam 16:00 s/d 18:59 WITA
-    if (currentHour >= 6 && currentHour < 9) {
-      statusAbsen = "MASUK";
-    } else if (currentHour >= 16 && currentHour < 19) {
+    // =========================================================================
+    // LOCKING TIME WINDOW LOGIC
+    // =========================================================================
+    if (currentHour >= 6 && currentHour < 15) {
+      // JAM 06:00 s/d 14:59 WITA -> Sesi Masuk Kelas
+      // Di rentang jam ini, mau di-tap berapa kalipun statusnya TETAP masuk/telat.
+      if (currentHour >= 6 && currentHour < 9) {
+        statusAbsen = "MASUK";
+      } else {
+        statusAbsen = "TERLAMBAT"; 
+      }
+    } 
+    else if (currentHour >= 15 && currentHour < 21) {
+      // JAM 15:00 s/d 20:59 WITA -> Sesi Pulang
+      // Di rentang jam ini baru diizinkan mencatat status KELUAR
       statusAbsen = "KELUAR";
+    } 
+    else {
+      // Di luar jam operasional sekolah (malam/subuh)
+      statusAbsen = "DILUAR_JAM"; 
     }
+    // =========================================================================
 
     console.log(`[LOG] Device: ${device_id || "Aparat"} | UID: ${uid} | Nama: ${namaSiswa} | Jam: ${currentHour} | Status: ${statusAbsen}`);
 
