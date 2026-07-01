@@ -23,30 +23,57 @@ module.exports = async (req, res) => {
   try {
     const { device_id, uid } = req.body;
 
-    // Validasi input data dari ESP8266
+    // Validasi input data mendasar dari ESP8266
     if (!uid) {
       return res.status(400).json({ error: 'Bad Request. Parameter UID tidak ditemukan.' });
     }
 
-    // 1. PEMETAAN DATA SISWA (Server-Side Mapping)
-    // Mencari nama berdasarkan UID dari file JSON. Jika tidak ada, otomatis 'Unknown'
-    const namaSiswa = daftarSiswa[uid] || "Unknown";
+    // =========================================================================
+    // 1. PEMETAAN & VALIDASI DATA SISWA MULTI-KELAS / MASTER GURU
+    // =========================================================================
+    const user = daftarSiswa[uid];
 
-    // 2. LOGIKA PENENTUAN WAKTU (Zona Waktu WITA)
+    // Kondisi A: Jika kartu RFID sama sekali tidak terdaftar di database JSON siswa.json
+    if (!user) {
+      console.log(`[REJECTED] UID: ${uid} tidak terdaftar di database.`);
+      return res.status(404).json({
+        status: "REJECTED",
+        name: "Unknown",
+        message: "Kartu Tak Terdaftar"
+      });
+    }
+
+    const namaSiswa = user.nama;
+    const nomorInduk = user.nis; // Menggunakan NIS siswa sebagai identitas log pengganti UID Hexa
+    const roleUser = user.role;
+    
+    // Normalisasi nama kelas dari alat (Contoh alat mengirim "TKJ_1" diubah menjadi "TKJ 1")
+    const namaMesinKelas = device_id ? device_id.replace("_", " ") : "";
+
+    // Kondisi B: Validasi Geofencing Kelas (Jika user adalah siswa, tapi kelasnya tidak sesuai dengan penempatan mesin)
+    if (roleUser === "siswa" && user.kelas !== namaMesinKelas) {
+      console.log(`[REJECTED] Siswa ${namaSiswa} (${user.kelas}) mencoba tap di mesin kelas ${namaMesinKelas}`);
+      return res.status(403).json({
+        status: "REJECTED",
+        name: namaSiswa,
+        message: "Salah Kelas!"
+      });
+    }
+
+    // =========================================================================
+    // 2. LOGIKA PENENTUAN WAKTU & FILO TIME WINDOW LOCKING (Zona Waktu WITA)
+    // =========================================================================
     const options = { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit', hour12: false };
     const timeString = new Date().toLocaleTimeString('id-ID', options); 
     
     // Parsing nilai jam secara aman
     const currentHour = parseInt(timeString.split(/[.:]/)[0], 10);
 
-    let statusAbsen = "MASUK"; // Default diset MASUK agar Apps Script mengenali sebagai sesi masuk
+    let statusAbsen = "MASUK"; // Default fallback awal
 
-    // =========================================================================
-    // LOCKING TIME WINDOW LOGIC
-    // =========================================================================
     if (currentHour >= 6 && currentHour < 15) {
-      // JAM 06:00 s/d 14:59 WITA -> Sesi Masuk Kelas
-      // Di rentang jam ini, mau di-tap berapa kalipun statusnya TETAP masuk/telat.
+      // JAM 06:00 s/d 14:59 WITA -> Sesi Masuk Kelas (Kunci First In)
+      // Di rentang jam ini, status dikunci konstan masuk atau terlambat untuk memotong double-tap
       if (currentHour >= 6 && currentHour < 9) {
         statusAbsen = "MASUK";
       } else {
@@ -54,42 +81,46 @@ module.exports = async (req, res) => {
       }
     } 
     else if (currentHour >= 15 && currentHour < 21) {
-      // JAM 15:00 s/d 20:59 WITA -> Sesi Pulang
-      // Di rentang jam ini baru diizinkan mencatat status KELUAR
+      // JAM 15:00 s/d 20:59 WITA -> Sesi Pulang (Mendukung Last Out)
+      // Di rentang jam ini baru diizinkan mencatat status KELUAR ke sistem Sheets
       statusAbsen = "KELUAR";
     } 
     else {
-      // Di luar jam operasional sekolah (malam/subuh)
+      // Di luar jam operasional normal sekolah (malam hari / subuh awal)
       statusAbsen = "DILUAR_JAM"; 
     }
+
+    console.log(`[LOG] [${roleUser.toUpperCase()}] Device: ${device_id || "Aparat"} | NIS: ${nomorInduk} | Nama: ${namaSiswa} | Jam: ${currentHour} | Status: ${statusAbsen}`);
+
     // =========================================================================
-
-    console.log(`[LOG] Device: ${device_id || "Aparat"} | UID: ${uid} | Nama: ${namaSiswa} | Jam: ${currentHour} | Status: ${statusAbsen}`);
-
-    // --- 3. MENERUSKAN DATA KE GOOGLE SHEETS ---
-    const forwardUrl = `${GOOGLE_SHEET_URL}?name=${encodeURIComponent(namaSiswa)}&id=${uid}&status=${statusAbsen}`;
-    console.log("[DEBUG] forwardUrl:", forwardUrl);
-    // Gunakan try-catch lokal atau biarkan fetch berjalan tanpa mempedulikan return bodynya
-  try {
-    const sheetRes = await fetch(forwardUrl, { 
-      method: 'GET',
-      redirect: 'follow'
-    });
-    const sheetText = await sheetRes.text();
-    console.log("[SHEETS]", sheetRes.status, sheetText);
-  } catch (err) {
-    console.error("[WARNING] Gagal meneruskan ke Google Sheets:", err.message);
-  } 
+    // 3. MENERUSKAN DATA VALID KE GOOGLE SHEETS
+    // =========================================================================
+    // Parameter 'id' sekarang diisi dengan nomorInduk (NIS) hasil pemetaan server
+    const forwardUrl = `${GOOGLE_SHEET_URL}?name=${encodeURIComponent(namaSiswa)}&id=${encodeURIComponent(nomorInduk)}&status=${statusAbsen}`;
+    console.log("[DEBUG] Membuka Jaringan ke Google Sheets:", forwardUrl);
     
-    // --- 4. RESPONS BALIK KE ESP8266 ---
-    // Pastikan ini dieksekusi secara bersih dan independen
+    try {
+      const sheetRes = await fetch(forwardUrl, { 
+        method: 'GET',
+        redirect: 'follow'
+      });
+      const sheetText = await sheetRes.text();
+      console.log("[SHEETS RESPONSE]", sheetRes.status, sheetText);
+    } catch (err) {
+      console.error("[WARNING] Gagal meneruskan paket data ke Google Sheets:", err.message);
+    } 
+    
+    // =========================================================================
+    // 4. RESPONS BALIK SUKSES KE ESP8266
+    // =========================================================================
     return res.status(200).json({
       status: statusAbsen,
-      name: namaSiswa
+      name: namaSiswa,
+      message: roleUser === "guru" ? "Halo Guru" : "Sukses"
     });
 
   } catch (error) {
-    console.error("[ERROR] Terjadi kegagalan sistem backend:", error);
+    console.error("[ERROR] Terjadi kegagalan fatal pada sistem backend Vercel:", error);
     return res.status(500).send("SERVER_ERROR");
   }
 };
