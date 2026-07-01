@@ -114,8 +114,8 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.clear();
-  tone(BUZZ_PIN, 4000); delay(150); noTone(BUZZ_PIN);
-  lcd.setCursor(0, 0); lcd.print("Booting Mesin...");
+  buzzerSukses();
+  lcd.setCursor(0, 0); lcd.print("Memulai Sistem...");
   lcd.setCursor(0, 1); lcd.print("Kelas: " + DEVICE_ID);
   delay(1500);
 
@@ -133,12 +133,12 @@ void setup() {
   if (WiFi.status() == WL_CONNECTED) {
     lcd.setCursor(0, 0); lcd.print("WiFi Terhubung!");
     lcd.setCursor(0, 1); lcd.print(WiFi.localIP().toString());
-    tone(BUZZ_PIN, 4000); delay(200); noTone(BUZZ_PIN);
-    tone(BUZZ_PIN, 4000); delay(200); noTone(BUZZ_PIN);
+    buzzerSukses();
+    buzzerSukses();
   } else {
     lcd.setCursor(0, 0); lcd.print("WiFi Gagal!");
     lcd.setCursor(0, 1); lcd.print("Mode Offline...");
-    tone(BUZZ_PIN, 600); delay(800); noTone(BUZZ_PIN);
+    buzzerError();
   }
 
   delay(2000);
@@ -149,7 +149,7 @@ void setup() {
 void loop() {
   // Deteksi adanya RFID Card
   if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
-    tone(BUZZ_PIN, 4000); delay(150); noTone(BUZZ_PIN);
+    buzzerSukses();
     
     // Mengubah UID byte ke format String HEX
     String uidString = "";
@@ -190,25 +190,25 @@ void loop() {
       } 
       else if (statusAbsen == "MASUK") {
         // KONDISI 2: Berhasil Absen Masuk (Siswa / Guru)
-        lcd.setCursor(0, 0); lcd.print(namaUser);
-        lcd.setCursor(0, 1); lcd.print("Absen Berhasil!");
+        lcd.setCursor(0, 1); lcd.print(namaUser);
+        lcd.setCursor(0, 0); lcd.print("Absen Berhasil!");
         buzzerSukses();
       } 
       else if (statusAbsen == "KELUAR") {
         // KONDISI 3: Berhasil Absen Pulang
-        lcd.setCursor(0, 0); lcd.print(namaUser);
-        lcd.setCursor(0, 1); lcd.print("Selamat Pulang!");
+        lcd.setCursor(0, 1); lcd.print(namaUser);
+        lcd.setCursor(0, 0); lcd.print("Selamat Pulang!");
         buzzerSukses();
       } 
       else if (statusAbsen == "TERLAMBAT") {
         // KONDISI 4: Terlambat Masuk
-        lcd.setCursor(0, 0); lcd.print(namaUser);
-        lcd.setCursor(0, 1); lcd.print("Tercatat Telat!");
+        lcd.setCursor(0, 1); lcd.print(namaUser);
+        lcd.setCursor(0, 0); lcd.print("Tercatat Telat!");
         buzzerSukses();
       }
       else {
         // KONDISI 5: Penanganan di luar jam operasional
-        lcd.setCursor(0, 0); lcd.print("Sesi Selesai");
+        lcd.setCursor(0, 0); lcd.print("Diluar Jam Operasional");
         lcd.setCursor(0, 1); lcd.print(namaUser);
         buzzerSukses();
       }
