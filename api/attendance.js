@@ -75,31 +75,40 @@ module.exports = async (req, res) => {
     const namaSiswa = user.nama;
     const nomorInduk = user.nis;
 
-    // =========================================================================
+// =========================================================================
     // STEP 3: LOGIKA TIME WINDOW FILO (Zona Waktu WITA)
     // =========================================================================
     const options = { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit', hour12: false };
     const timeString = new Date().toLocaleTimeString('id-ID', options); 
-    const currentHour = parseInt(timeString.split(/[.:]/)[0], 10);
+    
+    // Pecah string waktu untuk mendapatkan jam dan menit
+    const [hourStr, minuteStr] = timeString.split(/[.:]/);
+    const currentHour = parseInt(hourStr, 10);
+    const currentMinute = parseInt(minuteStr, 10);
 
-    let statusAbsen = "MASUK";
+    // Gabungkan jam dan menit menjadi satu angka riil (Contoh: 06:30 -> 630, 07:15 -> 715)
+    const currentTimeVal = (currentHour * 100) + currentMinute;
 
-    if (currentHour >= 22 && currentHour < 24) { // ----------------------> rentang bisa in
-      if (currentHour >= 22 && currentHour < 23) { // ----------------> in dianggap sah
-        statusAbsen = "MASUK";
-      } else {
-        statusAbsen = "TERLAMBAT"; 
-      }
+    let statusAbsen = "DILUAR_JAM"; // Set default (jika tidak masuk ke kondisi mana pun)
+
+    // 1. Logika Jam Masuk (06:30 - 07:15)
+    if (currentTimeVal >= 630 && currentTimeVal <= 715) { 
+      statusAbsen = "MASUK";
     } 
-    else if (currentHour >= 24 && currentHour < 3) { // --------------> Waktu Keluar
+    // 2. Logika Terlambat (07:16 - 09:00)
+    else if (currentTimeVal > 715 && currentTimeVal <= 900) { 
+      statusAbsen = "TERLAMBAT"; 
+    } 
+    // 3. Logika Pulang / Keluar (Misalnya: 15:00 - 17:00)
+    else if (currentTimeVal >= 1500 && currentTimeVal <= 1700) { 
       statusAbsen = "KELUAR";
     } 
+    // 4. Selain jam di atas
     else {
       statusAbsen = "DILUAR_JAM"; 
     }
 
     console.log(`[LOG] [${user.role.toUpperCase()}] Device: ${device_id} -> Tab Sheets: ${targetNamaTab} | NIS: ${nomorInduk} | Status: ${statusAbsen}`);
-
     // =========================================================================
     // STEP 4: KONEKSI KE GOOGLE APPS SCRIPT
     // =========================================================================
