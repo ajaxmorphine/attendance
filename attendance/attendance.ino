@@ -16,10 +16,10 @@
 
 // ===================== IDENTITAS MESIN ABSENSI =====================
 // Sesuaikan dengan nama kelas. Harus sinkron dengan data "kelas" di siswa.json (misal: "TKJ 1")
-const String DEVICE_ID = "TKJ 2";
+const String DEVICE_ID = "RPL 1";
 
 // URL API Vercel Dashboard
-String vercel_api_url = "https://attendance-airlangga.vercel.app/api/attendance";
+String vercel_api_url = "https://attendance-erlangga.vercel.app";
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
