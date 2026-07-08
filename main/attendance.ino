@@ -11,8 +11,8 @@
 #define BUZZ_PIN  D8   // Pin D8 (GPIO15)
 
 // ===================== Konfigurasi WiFi =====================
-#define WIFI_SSID     "Nggonku"
-#define WIFI_PASSWORD "bantuanrakyatmiskinn"
+#define WIFI_SSID     "duno"
+#define WIFI_PASSWORD "23571113"
 
 // ===================== IDENTITAS MESIN ABSENSI =====================
 // Sesuaikan dengan nama kelas. Harus sinkron dengan data "kelas" di siswa.json (misal: "TKJ 1")
@@ -36,7 +36,7 @@ String sendJsonToVercel(String uid) {
   }
 
   std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
-  client->setInsecure(); 
+  client->setInsecure(); // Mengabaikan validasi SSL fingerprint
 
   HTTPClient https;
   String response = "Kirim Gagal!";
@@ -89,7 +89,6 @@ void tampilkanStandby() {
 }
 
 // ===================== Parsing JSON Sederhana via String =====================
-
 String ambilNilaiJson(String json, String key) {
   String target = "\"" + key + "\":\"";
   int index = json.indexOf(target);
@@ -189,16 +188,11 @@ void loop() {
         lcd.setCursor(0, 1); lcd.print(pesanError != "" ? pesanError : "Salah Kelas");
         buzzerDitolak(); 
       } 
-      else if (statusAbsen == "MASUK") { // Digabung jadi satu agar aman 
+      else if (statusAbsen == "MASUK" || statusAbsen == "OUT" || statusAbsen == "KELUAR") { // Digabung jadi satu agar aman 
         lcd.setCursor(0, 0); lcd.print("Absen Berhasil!");
         lcd.setCursor(0, 1); lcd.print(namaUser);
         buzzerSukses();
       } 
-
-      else if (statusAbsen == "KELUAR"){
-        lcd.setCursor(0, 0); lcd.print(namaUser);
-        lcd.setCursor(0, 1); lcd.print("Selamat pulang");
-      }
       else if (statusAbsen == "TERLAMBAT") {
         lcd.setCursor(0, 0); lcd.print("Tercatat Telat!");
         lcd.setCursor(0, 1); lcd.print(namaUser);
@@ -206,8 +200,8 @@ void loop() {
       }
       else {
         // Fallback jika ada status tidak dikenal dari server
-        lcd.setCursor(0, 0); lcd.print("Diluar jam operasional");
-        lcd.setCursor(0, 1); lcd.print(namaUser);
+        lcd.setCursor(0, 0); lcd.print("Absen Berhasil!");
+        lcd.setCursor(0, 1); lcd.print(namaUser != "" ? namaUser : "Siswa Aktif"); 
         buzzerSukses();
       }
 
